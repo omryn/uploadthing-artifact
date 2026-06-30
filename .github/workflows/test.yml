@@ -57,31 +57,59 @@ jobs:
       UPLOADTHING_TOKEN: ${{ secrets.APTApiKey }}
 
     steps:
-    - name: Skip without UploadThing token
-      if: ${{ env.UPLOADTHING_TOKEN == '' }}
+    - name: Detect usable UploadThing token
+      id: uploadthing-token
+      shell: bash
+      run: |
+        normalize_token() {
+          local token padding
+          token="$(printf '%s' "$UPLOADTHING_TOKEN" | tr '_-' '/+')"
+          padding=$(((4 - ${#token} % 4) % 4))
+          printf '%s' "$token"
+          if [ "$padding" -gt 0 ]; then
+            printf '=%.0s' $(seq 1 "$padding")
+          fi
+        }
+
+        is_uploadthing_token() {
+          [ -n "$UPLOADTHING_TOKEN" ] || return 1
+          local decoded
+          decoded="$(normalize_token | base64 --decode 2>/dev/null)" || return 1
+          [[ "$decoded" == *'"apiKey"'* && "$decoded" == *'"appId"'* && "$decoded" == *'"regions"'* ]]
+        }
+
+        if is_uploadthing_token; then
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
+        else
+          echo 'Skipping UploadThing test because APTApiKey is missing or not a valid UploadThing token.'
+          echo 'enabled=false' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip without usable UploadThing token
+      if: ${{ steps.uploadthing-token.outputs.enabled != 'true' }}
       run: echo 'Skipping UploadThing E2E because APTApiKey is not configured.'
 
     - name: Checkout
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       uses: actions/checkout@v4
 
     - name: Setup Node 24
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       uses: actions/setup-node@v4
       with:
         node-version: 24.x
         cache: 'npm'
 
     - name: Install dependencies
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: npm ci
 
     - name: Compile
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: npm run build
 
     - name: Create artifact files
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: |
         mkdir -p path/to/dir-1 path/to/dir-2 direct merge-a merge-b
         echo 'Lorem ipsum dolor sit amet' > path/to/dir-1/file1.txt
@@ -91,7 +119,7 @@ jobs:
         echo 'merge b' > merge-b/file-b.txt
 
     - name: Upload zipped artifact
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       id: zipped
       uses: ./
       with:
@@ -99,7 +127,7 @@ jobs:
         path: path/**/dir*
 
     - name: Upload direct artifact
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       id: direct
       uses: ./
       with:
@@ -107,7 +135,7 @@ jobs:
         archive: false
 
     - name: Download and verify zipped artifact
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: |
         mkdir -p downloaded-zipped
         curl -fsSL '${{ steps.zipped.outputs.artifact-url }}' -o artifact.zip
@@ -116,13 +144,13 @@ jobs:
         test "$(cat downloaded-zipped/to/dir-2/file2.txt)" = 'Hello world from file #2'
 
     - name: Download and verify direct artifact
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: |
         curl -fsSL '${{ steps.direct.outputs.artifact-url }}' -o report.txt
         test "$(cat report.txt)" = 'direct file upload content'
 
     - name: Upload merge source A
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       id: merge-a
       uses: ./
       with:
@@ -130,7 +158,7 @@ jobs:
         path: merge-a/file-a.txt
 
     - name: Upload merge source B
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       id: merge-b
       uses: ./
       with:
@@ -138,7 +166,7 @@ jobs:
         path: merge-b/file-b.txt
 
     - name: Merge artifacts
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       id: merge
       uses: ./merge/
       with:
@@ -147,7 +175,7 @@ jobs:
         separate-directories: true
 
     - name: Download and verify merged artifact
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ steps.uploadthing-token.outputs.enabled == 'true' }}
       run: |
         mkdir -p downloaded-merged
         curl -fsSL '${{ steps.merge.outputs.artifact-url }}' -o merged.zip
@@ -156,7 +184,7 @@ jobs:
         test "$(cat downloaded-merged/merge-source-b-${{ github.run_id }}/file-b.txt)" = 'merge b'
 
     - name: Delete UploadThing E2E artifacts
-      if: ${{ always() && env.UPLOADTHING_TOKEN != '' }}
+      if: ${{ always() && steps.uploadthing-token.outputs.enabled == 'true' }}
       env:
         CUSTOM_IDS: |
           ${{ steps.zipped.outputs.artifact-custom-id }}
