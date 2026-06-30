@@ -1,6 +1,19 @@
 import {jest, describe, test, expect, beforeEach} from '@jest/globals'
-import * as path from 'path'
 
+// Mock @actions/github before importing modules that use it
+jest.unstable_mockModule('@actions/github', () => ({
+  context: {
+    repo: {
+      owner: 'actions',
+      repo: 'toolkit'
+    },
+    runId: 123,
+    serverUrl: 'https://github.com'
+  },
+  getOctokit: jest.fn()
+}))
+
+// Mock @actions/core
 jest.unstable_mockModule('@actions/core', () => ({
   getInput: jest.fn(),
   getBooleanInput: jest.fn(),
@@ -25,6 +38,7 @@ jest.unstable_mockModule('@actions/core', () => ({
   toPosixPath: jest.fn((p: string) => p)
 }))
 
+// Mock fs/promises
 const actualFsPromises = await import('fs/promises')
 jest.unstable_mockModule('fs/promises', () => ({
   ...actualFsPromises,
@@ -34,233 +48,173 @@ jest.unstable_mockModule('fs/promises', () => ({
   rm: jest.fn<() => Promise<void>>().mockResolvedValue(undefined)
 }))
 
+// Mock shared search module
 const mockFindFilesToUpload =
   jest.fn<() => Promise<{filesToUpload: string[]; rootDirectory: string}>>()
 jest.unstable_mockModule('../src/shared/search.js', () => ({
   findFilesToUpload: mockFindFilesToUpload
 }))
 
-const mockListArtifacts = jest.fn<(...args: any[]) => Promise<any[]>>()
-const mockDownloadArtifact = jest.fn<(...args: any[]) => Promise<void>>()
-const mockUploadArtifact = jest.fn<(...args: any[]) => Promise<void>>()
-const mockDeleteArtifacts = jest.fn<(...args: any[]) => Promise<void>>()
-jest.unstable_mockModule('../src/shared/upload-artifact.js', () => ({
-  listArtifacts: mockListArtifacts,
-  downloadArtifact: mockDownloadArtifact,
-  uploadArtifact: mockUploadArtifact,
-  deleteArtifacts: mockDeleteArtifacts
-}))
-
+// Dynamic imports after mocking
 const core = await import('@actions/core')
+const artifact = await import('@actions/artifact')
 const {run} = await import('../src/merge/merge-artifacts.js')
 const {Inputs} = await import('../src/merge/constants.js')
-const {UploadThingInputNames} =
-  await import('../src/shared/uploadthing-input-helper.js')
 
 const fixtures = {
   artifactName: 'my-merged-artifact',
   tmpDirectory: '/tmp/merge-artifact',
   filesToUpload: [
-    '/tmp/merge-artifact/file-a.txt',
-    '/tmp/merge-artifact/file-b.txt',
-    '/tmp/merge-artifact/file-c.txt'
+    '/some/artifact/path/file-a.txt',
+    '/some/artifact/path/file-b.txt',
+    '/some/artifact/path/file-c.txt'
   ],
   artifacts: [
     {
       name: 'my-artifact-a',
-      key: 'key-a',
-      customId: 'custom-a',
-      fileName: 'my-artifact-a.zip',
+      id: 1,
       size: 100,
-      archive: true
+      createdAt: new Date('2024-01-01T00:00:00Z')
     },
     {
       name: 'my-artifact-b',
-      key: 'key-b',
-      customId: 'custom-b',
-      fileName: 'my-artifact-b.zip',
+      id: 2,
       size: 100,
-      archive: true
+      createdAt: new Date('2024-01-01T00:00:00Z')
     },
     {
       name: 'my-artifact-c',
-      key: 'key-c',
-      customId: 'custom-c',
-      fileName: 'my-artifact-c.zip',
+      id: 3,
       size: 100,
-      archive: true
+      createdAt: new Date('2024-01-01T00:00:00Z')
     }
   ]
 }
 
 const mockInputs = (
-  overrides?: Partial<{[K in (typeof Inputs)[keyof typeof Inputs]]?: any}> &
-    Record<string, any>
+  overrides?: Partial<{[K in (typeof Inputs)[keyof typeof Inputs]]?: any}>
 ) => {
   const inputs: Record<string, any> = {
-    [Inputs.Name]: fixtures.artifactName,
+    [Inputs.Name]: 'my-merged-artifact',
     [Inputs.Pattern]: '*',
     [Inputs.SeparateDirectories]: false,
-    [Inputs.RetentionDays]: '',
-    [Inputs.CompressionLevel]: '6',
+    [Inputs.RetentionDays]: 0,
+    [Inputs.CompressionLevel]: 6,
     [Inputs.DeleteMerged]: false,
-    [Inputs.IncludeHiddenFiles]: false,
-    [UploadThingInputNames.UploadThingToken]: '',
-    [UploadThingInputNames.Acl]: '',
-    [UploadThingInputNames.ContentDisposition]: '',
-    [UploadThingInputNames.SignedUrlExpiresIn]: '',
     ...overrides
   }
 
   ;(core.getInput as jest.Mock<typeof core.getInput>).mockImplementation(
-    (name: string) => inputs[name]
+    (name: string) => {
+      return inputs[name]
+    }
   )
   ;(
     core.getBooleanInput as jest.Mock<typeof core.getBooleanInput>
-  ).mockImplementation((name: string) => inputs[name])
+  ).mockImplementation((name: string) => {
+    return inputs[name]
+  })
 
   return inputs
 }
 
 describe('merge', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockInputs()
     jest.clearAllMocks()
-    mockListArtifacts.mockResolvedValue(fixtures.artifacts)
-    mockDownloadArtifact.mockResolvedValue(undefined)
-    mockUploadArtifact.mockResolvedValue(undefined)
-    mockDeleteArtifacts.mockResolvedValue(undefined)
+
+    jest
+      .spyOn(artifact.default, 'listArtifacts')
+      .mockResolvedValue({artifacts: fixtures.artifacts})
+
+    jest.spyOn(artifact.default, 'downloadArtifact').mockResolvedValue({
+      downloadPath: fixtures.tmpDirectory
+    })
+
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: fixtures.filesToUpload,
       rootDirectory: fixtures.tmpDirectory
     })
+
+    jest.spyOn(artifact.default, 'uploadArtifact').mockResolvedValue({
+      size: 123,
+      id: 1337
+    })
+
+    jest
+      .spyOn(artifact.default, 'deleteArtifact')
+      .mockImplementation(async (artifactName: string) => {
+        const found = fixtures.artifacts.find(a => a.name === artifactName)
+        if (!found) throw new Error(`Artifact ${artifactName} not found`)
+        return {id: found.id}
+      })
   })
 
   test('merges artifacts', async () => {
     await run()
 
-    for (const artifact of fixtures.artifacts) {
-      expect(mockDownloadArtifact).toHaveBeenCalledWith(
-        artifact,
-        fixtures.tmpDirectory,
-        expect.any(Object)
-      )
+    for (const a of fixtures.artifacts) {
+      expect(artifact.default.downloadArtifact).toHaveBeenCalledWith(a.id, {
+        path: fixtures.tmpDirectory
+      })
     }
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
+
+    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.tmpDirectory,
-      expect.objectContaining({
-        archive: true,
-        compressionLevel: 6,
-        retentionDays: 0,
-        overwrite: false
-      })
+      {compressionLevel: 6}
     )
   })
 
   test('fails if no artifacts found', async () => {
     mockInputs({[Inputs.Pattern]: 'this-does-not-match'})
 
-    await expect(run()).rejects.toThrow(
-      "No artifacts found matching pattern 'this-does-not-match'"
-    )
+    await expect(run()).rejects.toThrow()
 
-    expect(mockUploadArtifact).not.toHaveBeenCalled()
-    expect(mockDownloadArtifact).not.toHaveBeenCalled()
-  })
-
-  test('filters artifacts by pattern', async () => {
-    mockInputs({[Inputs.Pattern]: 'my-artifact-a'})
-
-    await run()
-
-    expect(mockDownloadArtifact).toHaveBeenCalledTimes(1)
-    expect(mockDownloadArtifact).toHaveBeenCalledWith(
-      fixtures.artifacts[0],
-      fixtures.tmpDirectory,
-      expect.any(Object)
-    )
-  })
-
-  test('downloads artifacts into separate directories', async () => {
-    mockInputs({[Inputs.SeparateDirectories]: true})
-
-    await run()
-
-    for (const artifact of fixtures.artifacts) {
-      expect(mockDownloadArtifact).toHaveBeenCalledWith(
-        artifact,
-        path.join(fixtures.tmpDirectory, artifact.name),
-        expect.any(Object)
-      )
-    }
+    expect(artifact.default.uploadArtifact).not.toHaveBeenCalled()
+    expect(artifact.default.downloadArtifact).not.toHaveBeenCalled()
   })
 
   test('supports custom compression level', async () => {
-    mockInputs({[Inputs.CompressionLevel]: '2'})
-
-    await run()
-
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      fixtures.filesToUpload,
-      fixtures.tmpDirectory,
-      expect.objectContaining({compressionLevel: 2})
-    )
-  })
-
-  test('warns that retention days are ignored', async () => {
-    mockInputs({[Inputs.RetentionDays]: '7'})
-
-    await run()
-
-    expect(core.warning).toHaveBeenCalledWith(
-      'retention-days is ignored because UploadThing storage does not support per-artifact retention'
-    )
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      fixtures.filesToUpload,
-      fixtures.tmpDirectory,
-      expect.objectContaining({retentionDays: 7})
-    )
-  })
-
-  test('passes UploadThing inputs to storage helpers', async () => {
     mockInputs({
-      [UploadThingInputNames.UploadThingToken]: 'token-value',
-      [UploadThingInputNames.Acl]: 'private',
-      [UploadThingInputNames.ContentDisposition]: 'attachment',
-      [UploadThingInputNames.SignedUrlExpiresIn]: '15 minutes'
+      [Inputs.CompressionLevel]: 2
     })
 
     await run()
 
-    expect(core.setSecret).toHaveBeenCalledWith('token-value')
-    expect(mockListArtifacts).toHaveBeenCalledWith(
-      expect.objectContaining({uploadthingToken: 'token-value'})
-    )
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
+    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.tmpDirectory,
-      expect.objectContaining({
-        uploadthingToken: 'token-value',
-        acl: 'private',
-        contentDisposition: 'attachment',
-        signedUrlExpiresIn: '15 minutes'
-      })
+      {compressionLevel: 2}
+    )
+  })
+
+  test('supports custom retention days', async () => {
+    mockInputs({
+      [Inputs.RetentionDays]: 7
+    })
+
+    await run()
+
+    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+      fixtures.artifactName,
+      fixtures.filesToUpload,
+      fixtures.tmpDirectory,
+      {retentionDays: 7, compressionLevel: 6}
     )
   })
 
   test('supports deleting artifacts after merge', async () => {
-    mockInputs({[Inputs.DeleteMerged]: true})
+    mockInputs({
+      [Inputs.DeleteMerged]: true
+    })
 
     await run()
 
-    expect(mockDeleteArtifacts).toHaveBeenCalledWith(
-      fixtures.artifacts,
-      expect.any(Object)
-    )
+    for (const a of fixtures.artifacts) {
+      expect(artifact.default.deleteArtifact).toHaveBeenCalledWith(a.name)
+    }
   })
 })

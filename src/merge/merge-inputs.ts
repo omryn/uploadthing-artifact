@@ -1,5 +1,3 @@
-import type {UploadThingInputs} from '../shared/uploadthing-input-helper.js'
-
 export interface MergeInputs {
   /**
    * The name of the artifact that the artifacts will be merged into
@@ -37,6 +35,4 @@ export interface MergeInputs {
    * Whether or not to include hidden files in the artifact
    */
   includeHiddenFiles: boolean
-
-  uploadThing: UploadThingInputs
 }

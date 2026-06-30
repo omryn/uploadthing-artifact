@@ -1,7 +1,6 @@
 import {NoFileOptions} from './constants.js'
-import type {UploadThingInputs} from '../shared/uploadthing-input-helper.js'
 
-export interface UploadInputs extends UploadThingInputs {
+export interface UploadInputs {
   /**
    * The name of the artifact that will be uploaded
    */
@@ -20,7 +19,7 @@ export interface UploadInputs extends UploadThingInputs {
   /**
    * Duration after which artifact will expire in days
    */
-  retentionDays?: number
+  retentionDays: number
 
   /**
    * The level of compression for Zlib to be applied to the artifact archive.

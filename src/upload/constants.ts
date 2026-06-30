@@ -7,11 +7,7 @@ export enum Inputs {
   CompressionLevel = 'compression-level',
   Overwrite = 'overwrite',
   IncludeHiddenFiles = 'include-hidden-files',
-  Archive = 'archive',
-  UploadThingToken = 'uploadthing-token',
-  Acl = 'acl',
-  ContentDisposition = 'content-disposition',
-  SignedUrlExpiresIn = 'signed-url-expires-in'
+  Archive = 'archive'
 }
 
 export enum NoFileOptions {

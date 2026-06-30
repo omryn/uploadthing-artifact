@@ -14,6 +14,7 @@ permissions:
   contents: read
 
 jobs:
+  # End to end upload with proxy
   test-proxy-upload:
     runs-on: ubuntu-latest
     container:
@@ -27,106 +28,87 @@ jobs:
     env:
       http_proxy: http://squid-proxy:3128
       https_proxy: http://squid-proxy:3128
-      UPLOADTHING_TOKEN: ${{ secrets.UPLOADTHING_TOKEN }}
     steps:
-    - name: Skip without UploadThing token
-      if: ${{ env.UPLOADTHING_TOKEN == '' }}
-      run: echo 'Skipping proxy upload test because UPLOADTHING_TOKEN is not configured.'
-
     - name: Wait for proxy to be ready
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
       shell: bash
       run: |
-        echo 'Waiting for squid proxy to be ready...'
-        getent hosts squid-proxy || echo 'DNS resolution failed'
+        echo "Waiting for squid proxy to be ready..."
+        echo "Resolving squid-proxy hostname:"
+        getent hosts squid-proxy || echo "DNS resolution failed"
         for i in $(seq 1 30); do
           if (echo > /dev/tcp/squid-proxy/3128) 2>/dev/null; then
-            echo 'Proxy is ready!'
+            echo "Proxy is ready!"
             exit 0
           fi
           echo "Attempt $i: Proxy not ready, waiting..."
           sleep 2
         done
-        echo 'Proxy failed to become ready'
+        echo "Proxy failed to become ready"
         exit 1
       env:
-        http_proxy: ''
-        https_proxy: ''
-
-    - name: Install system dependencies
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+        http_proxy: ""
+        https_proxy: ""
+    - name: Install dependencies
       run: |
         apt-get update
-        apt-get install -y iptables curl nodejs npm git
-
+        apt-get install -y iptables curl
     - name: Verify proxy is working
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
       run: |
-        curl -s -o /dev/null -w '%{http_code}' --proxy http://squid-proxy:3128 https://api.uploadthing.com || true
-        echo 'Proxy verification complete'
-
-    - name: Block direct traffic
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
+        echo "Testing proxy connectivity..."
+        curl -s -o /dev/null -w "%{http_code}" --proxy http://squid-proxy:3128 http://github.com || true
+        echo "Proxy verification complete"
+    - name: Block direct traffic (enforce proxy usage)
       run: |
+        # Get the squid-proxy container IP
         PROXY_IP=$(getent hosts squid-proxy | awk '{ print $1 }')
         echo "Proxy IP: $PROXY_IP"
+        
+        # Allow loopback traffic
         iptables -A OUTPUT -o lo -j ACCEPT
-        iptables -A OUTPUT -d "$PROXY_IP" -j ACCEPT
+        
+        # Allow traffic to the proxy container
+        iptables -A OUTPUT -d $PROXY_IP -j ACCEPT
+        
+        # Allow established connections
         iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+        
+        # Allow DNS (needed for initial resolution)
         iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
         iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+        
+        # Block all other outbound traffic (HTTP/HTTPS)
         iptables -A OUTPUT -p tcp --dport 80 -j REJECT
         iptables -A OUTPUT -p tcp --dport 443 -j REJECT
+        
+        # Log the iptables rules for debugging
         iptables -L -v -n
-
     - name: Verify direct HTTPS is blocked
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
       run: |
-        if curl --noproxy '*' -s --connect-timeout 5 https://api.uploadthing.com > /dev/null 2>&1; then
-          echo 'ERROR: Direct HTTPS request succeeded - blocking is not working!'
+        echo "Testing that direct HTTPS requests fail..."
+        if curl --noproxy '*' -s --connect-timeout 5 https://github.com > /dev/null 2>&1; then
+          echo "ERROR: Direct HTTPS request succeeded - blocking is not working!"
+          exit 1
+        else
+          echo "SUCCESS: Direct HTTPS request was blocked as expected"
+        fi
+        
+        echo "Testing that HTTPS through proxy succeeds..."
+        if curl --proxy http://squid-proxy:3128 -s --connect-timeout 10 https://github.com > /dev/null 2>&1; then
+          echo "SUCCESS: HTTPS request through proxy succeeded"
+        else
+          echo "ERROR: HTTPS request through proxy failed!"
           exit 1
         fi
-        curl --proxy http://squid-proxy:3128 -s --connect-timeout 10 https://api.uploadthing.com > /dev/null
-
     - name: Checkout
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
       uses: actions/checkout@v4
-
-    - name: Setup Node 24
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: 24.x
-        cache: 'npm'
-
-    - name: Install dependencies
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
-      run: npm ci
-
-    - name: Build action
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
-      run: npm run build
-
     - name: Create artifact file
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
       run: |
         mkdir -p test-artifacts
         echo "Proxy test artifact - $GITHUB_RUN_ID" > test-artifacts/proxy-test.txt
-
+        echo "Random data: $RANDOM $RANDOM $RANDOM" >> test-artifacts/proxy-test.txt
+        cat test-artifacts/proxy-test.txt
     - name: Upload artifact through proxy
-      if: ${{ env.UPLOADTHING_TOKEN != '' }}
-      id: upload
       uses: ./
       with:
-        name: proxy-test-${{ github.run_id }}
+        name: 'Proxy-Test-Artifact-${{ github.run_id }}'
         path: test-artifacts/proxy-test.txt
-
-    - name: Delete proxy test artifact
-      if: ${{ always() && env.UPLOADTHING_TOKEN != '' && steps.upload.outputs.artifact-custom-id != '' }}
-      run: |
-        node --input-type=module <<'EOF'
-        import {UTApi} from 'uploadthing/server'
-        await new UTApi().deleteFiles(process.env.CUSTOM_ID, {keyType: 'customId'})
-        EOF
-      env:
-        CUSTOM_ID: ${{ steps.upload.outputs.artifact-custom-id }}

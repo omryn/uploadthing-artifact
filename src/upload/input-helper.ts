@@ -1,7 +1,6 @@
 import * as core from '@actions/core'
 import {Inputs, NoFileOptions} from './constants.js'
 import {UploadInputs} from './upload-inputs.js'
-import {getUploadThingInputs} from '../shared/uploadthing-input-helper.js'
 
 /**
  * Helper to get all the inputs for the action
@@ -12,7 +11,6 @@ export function getInputs(): UploadInputs {
   const overwrite = core.getBooleanInput(Inputs.Overwrite)
   const includeHiddenFiles = core.getBooleanInput(Inputs.IncludeHiddenFiles)
   const archive = core.getBooleanInput(Inputs.Archive)
-  const uploadThingInputs = getUploadThingInputs()
 
   const ifNoFilesFound = core.getInput(Inputs.IfNoFilesFound)
   const noFileBehavior: NoFileOptions = NoFileOptions[ifNoFilesFound]
@@ -33,8 +31,7 @@ export function getInputs(): UploadInputs {
     ifNoFilesFound: noFileBehavior,
     overwrite: overwrite,
     includeHiddenFiles: includeHiddenFiles,
-    archive: archive,
-    ...uploadThingInputs
+    archive: archive
   } as UploadInputs
 
   const retentionDaysStr = core.getInput(Inputs.RetentionDays)
@@ -42,10 +39,6 @@ export function getInputs(): UploadInputs {
     inputs.retentionDays = parseInt(retentionDaysStr)
     if (isNaN(inputs.retentionDays)) {
       core.setFailed('Invalid retention-days')
-    } else {
-      core.warning(
-        'retention-days is not supported by UploadThing and will be ignored'
-      )
     }
   }
 

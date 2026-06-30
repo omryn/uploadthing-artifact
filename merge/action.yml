@@ -16,7 +16,10 @@ inputs:
     default: 'false'
   retention-days:
     description: >
-      Unsupported by UploadThing. Parsed for compatibility, but ignored with a warning.
+      Duration after which artifact will expire in days. 0 means using default retention.
+
+      Minimum 1 day.
+      Maximum 90 days unless changed from the repository settings page.
   compression-level:
     description: >
       The level of compression for Zlib to be applied to the artifact archive.
@@ -38,28 +41,22 @@ inputs:
       If true, hidden files will be included in the merged artifact.
       If false, hidden files will be excluded from the merged artifact.
     default: 'false'
-  uploadthing-token:
-    description: 'UploadThing token. Defaults to the UPLOADTHING_TOKEN environment variable.'
-  acl:
-    description: 'UploadThing ACL for uploaded artifacts. Valid values are public-read and private.'
-  content-disposition:
-    description: 'Content-Disposition for uploaded artifacts. Valid values are inline and attachment.'
-  signed-url-expires-in:
-    description: 'Expiration for private artifact signed URLs.'
 
 outputs:
   artifact-id:
     description: >
-      Alias of artifact-key for compatibility. Empty if the artifact upload failed.
-  artifact-key:
-    description: >
-      UploadThing file key for the artifact that was just uploaded. Empty if the artifact upload failed.
-  artifact-custom-id:
-    description: >
-      UploadThing custom ID for the artifact that was just uploaded. Empty if the artifact upload failed.
+      A unique identifier for the artifact that was just uploaded. Empty if the artifact upload failed.
+
+      This ID can be used as input to other APIs to download, delete or get more information about an artifact: https://docs.github.com/en/rest/actions/artifacts
   artifact-url:
     description: >
-      UploadThing URL for the artifact that was just uploaded. Private artifacts return a signed URL.
+      A download URL for the artifact that was just uploaded. Empty if the artifact upload failed.
+
+      This download URL only works for requests Authenticated with GitHub. Anonymous downloads will be prompted to first login. 
+      If an anonymous download URL is needed than a short time restricted URL can be generated using the download artifact API: https://docs.github.com/en/rest/actions/artifacts#download-an-artifact    
+
+      This URL will be valid for as long as the artifact exists and the workflow run and repository exists. Once an artifact has expired this URL will no longer work.
+      Common uses cases for such a download URL can be adding download links to artifacts in descriptions or comments on pull requests or issues.
   artifact-digest:
     description: >
       SHA-256 digest for the artifact that was just uploaded. Empty if the artifact upload failed.
