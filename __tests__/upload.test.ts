@@ -1,19 +1,5 @@
 import {jest, describe, test, expect, beforeEach} from '@jest/globals'
 
-// Mock @actions/github before importing modules that use it
-jest.unstable_mockModule('@actions/github', () => ({
-  context: {
-    repo: {
-      owner: 'actions',
-      repo: 'toolkit'
-    },
-    runId: 123,
-    serverUrl: 'https://github.com'
-  },
-  getOctokit: jest.fn()
-}))
-
-// Mock @actions/core
 jest.unstable_mockModule('@actions/core', () => ({
   getInput: jest.fn(),
   getBooleanInput: jest.fn(),
@@ -38,20 +24,20 @@ jest.unstable_mockModule('@actions/core', () => ({
   toPosixPath: jest.fn((p: string) => p)
 }))
 
-// Mock shared search module
 const mockFindFilesToUpload =
   jest.fn<() => Promise<{filesToUpload: string[]; rootDirectory: string}>>()
 jest.unstable_mockModule('../src/shared/search.js', () => ({
   findFilesToUpload: mockFindFilesToUpload
 }))
 
-// Dynamic imports after mocking
+const mockUploadArtifact = jest.fn<(...args: any[]) => Promise<void>>()
+jest.unstable_mockModule('../src/shared/upload-artifact.js', () => ({
+  uploadArtifact: mockUploadArtifact
+}))
+
 const core = await import('@actions/core')
-const github = await import('@actions/github')
-const artifact = await import('@actions/artifact')
 const {run} = await import('../src/upload/upload-artifact.js')
 const {Inputs} = await import('../src/upload/constants.js')
-const {ArtifactNotFoundError} = artifact
 
 const fixtures = {
   artifactName: 'artifact-name',
@@ -66,120 +52,99 @@ const mockInputs = (
   overrides?: Partial<{[K in (typeof Inputs)[keyof typeof Inputs]]?: any}>
 ) => {
   const inputs: Record<string, any> = {
-    [Inputs.Name]: 'artifact-name',
-    [Inputs.Path]: '/some/artifact/path',
+    [Inputs.Name]: fixtures.artifactName,
+    [Inputs.Path]: fixtures.rootDirectory,
     [Inputs.IfNoFilesFound]: 'warn',
-    [Inputs.RetentionDays]: 0,
-    [Inputs.CompressionLevel]: 6,
+    [Inputs.RetentionDays]: '',
+    [Inputs.CompressionLevel]: '6',
     [Inputs.Overwrite]: false,
+    [Inputs.IncludeHiddenFiles]: false,
     [Inputs.Archive]: true,
+    [Inputs.UploadThingToken]: '',
+    [Inputs.Acl]: '',
+    [Inputs.ContentDisposition]: '',
+    [Inputs.SignedUrlExpiresIn]: '',
     ...overrides
   }
 
   ;(core.getInput as jest.Mock<typeof core.getInput>).mockImplementation(
-    (name: string) => {
-      return inputs[name]
-    }
+    (name: string) => inputs[name]
   )
   ;(
     core.getBooleanInput as jest.Mock<typeof core.getBooleanInput>
-  ).mockImplementation((name: string) => {
-    return inputs[name]
-  })
+  ).mockImplementation((name: string) => inputs[name])
 
   return inputs
 }
 
 describe('upload', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     mockInputs()
     jest.clearAllMocks()
-
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: fixtures.filesToUpload,
       rootDirectory: fixtures.rootDirectory
     })
-
-    jest.spyOn(artifact.default, 'uploadArtifact').mockResolvedValue({
-      size: 123,
-      id: 1337,
-      digest: 'facefeed'
-    })
+    mockUploadArtifact.mockResolvedValue(undefined)
   })
 
-  test('uploads a single file', async () => {
-    mockFindFilesToUpload.mockResolvedValue({
-      filesToUpload: [fixtures.filesToUpload[0]],
-      rootDirectory: fixtures.rootDirectory
-    })
-
+  test('uploads files with UploadThing options', async () => {
     await run()
 
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      [fixtures.filesToUpload[0]],
-      fixtures.rootDirectory,
-      {compressionLevel: 6}
-    )
-  })
-
-  test('uploads multiple files', async () => {
-    await run()
-
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.rootDirectory,
-      {compressionLevel: 6}
+      expect.objectContaining({
+        archive: true,
+        overwrite: false,
+        compressionLevel: 6
+      })
     )
   })
 
-  test('sets outputs', async () => {
-    await run()
-
-    expect(core.setOutput).toHaveBeenCalledWith('artifact-id', 1337)
-    expect(core.setOutput).toHaveBeenCalledWith('artifact-digest', 'facefeed')
-    expect(core.setOutput).toHaveBeenCalledWith(
-      'artifact-url',
-      `${github.context.serverUrl}/${github.context.repo.owner}/${github.context.repo.repo}/actions/runs/${github.context.runId}/artifacts/${1337}`
-    )
-  })
-
-  test('supports custom compression level', async () => {
+  test('passes UploadThing input values', async () => {
     mockInputs({
-      [Inputs.CompressionLevel]: 2
+      [Inputs.UploadThingToken]: 'token-value',
+      [Inputs.Acl]: 'private',
+      [Inputs.ContentDisposition]: 'attachment',
+      [Inputs.SignedUrlExpiresIn]: '30 minutes'
     })
 
     await run()
 
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+    expect(core.setSecret).toHaveBeenCalledWith('token-value')
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.rootDirectory,
-      {compressionLevel: 2}
+      expect.objectContaining({
+        uploadthingToken: 'token-value',
+        acl: 'private',
+        contentDisposition: 'attachment',
+        signedUrlExpiresIn: '30 minutes'
+      })
     )
   })
 
-  test('supports custom retention days', async () => {
-    mockInputs({
-      [Inputs.RetentionDays]: 7
-    })
+  test('warns that retention days are ignored', async () => {
+    mockInputs({[Inputs.RetentionDays]: '7'})
 
     await run()
 
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+    expect(core.warning).toHaveBeenCalledWith(
+      'retention-days is not supported by UploadThing and will be ignored'
+    )
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.rootDirectory,
-      {retentionDays: 7, compressionLevel: 6}
+      expect.objectContaining({retentionDays: 7})
     )
   })
 
   test('supports warn if-no-files-found', async () => {
-    mockInputs({
-      [Inputs.IfNoFilesFound]: 'warn'
-    })
-
+    mockInputs({[Inputs.IfNoFilesFound]: 'warn'})
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: [],
       rootDirectory: fixtures.rootDirectory
@@ -190,13 +155,11 @@ describe('upload', () => {
     expect(core.warning).toHaveBeenCalledWith(
       `No files were found with the provided path: ${fixtures.rootDirectory}. No artifacts will be uploaded.`
     )
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 
   test('supports error if-no-files-found', async () => {
-    mockInputs({
-      [Inputs.IfNoFilesFound]: 'error'
-    })
-
+    mockInputs({[Inputs.IfNoFilesFound]: 'error'})
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: [],
       rootDirectory: fixtures.rootDirectory
@@ -207,13 +170,11 @@ describe('upload', () => {
     expect(core.setFailed).toHaveBeenCalledWith(
       `No files were found with the provided path: ${fixtures.rootDirectory}. No artifacts will be uploaded.`
     )
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 
   test('supports ignore if-no-files-found', async () => {
-    mockInputs({
-      [Inputs.IfNoFilesFound]: 'ignore'
-    })
-
+    mockInputs({[Inputs.IfNoFilesFound]: 'ignore'})
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: [],
       rootDirectory: fixtures.rootDirectory
@@ -224,62 +185,24 @@ describe('upload', () => {
     expect(core.info).toHaveBeenCalledWith(
       `No files were found with the provided path: ${fixtures.rootDirectory}. No artifacts will be uploaded.`
     )
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 
-  test('supports overwrite', async () => {
-    mockInputs({
-      [Inputs.Overwrite]: true
-    })
-
-    jest.spyOn(artifact.default, 'deleteArtifact').mockResolvedValue({
-      id: 1337
-    })
+  test('passes overwrite to UploadThing storage', async () => {
+    mockInputs({[Inputs.Overwrite]: true})
 
     await run()
 
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       fixtures.filesToUpload,
       fixtures.rootDirectory,
-      {compressionLevel: 6}
-    )
-
-    expect(artifact.default.deleteArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName
+      expect.objectContaining({overwrite: true})
     )
   })
 
-  test('supports overwrite and continues if not found', async () => {
-    mockInputs({
-      [Inputs.Overwrite]: true
-    })
-
-    jest
-      .spyOn(artifact.default, 'deleteArtifact')
-      .mockRejectedValue(new ArtifactNotFoundError('not found'))
-
-    await run()
-
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      fixtures.filesToUpload,
-      fixtures.rootDirectory,
-      {compressionLevel: 6}
-    )
-
-    expect(artifact.default.deleteArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName
-    )
-    expect(core.debug).toHaveBeenCalledWith(
-      `Skipping deletion of '${fixtures.artifactName}', it does not exist`
-    )
-  })
-
-  test('passes skipArchive when archive is false', async () => {
-    mockInputs({
-      [Inputs.Archive]: false
-    })
-
+  test('passes archive false for direct file upload', async () => {
+    mockInputs({[Inputs.Archive]: false})
     mockFindFilesToUpload.mockResolvedValue({
       filesToUpload: [fixtures.filesToUpload[0]],
       rootDirectory: fixtures.rootDirectory
@@ -287,44 +210,22 @@ describe('upload', () => {
 
     await run()
 
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
+    expect(mockUploadArtifact).toHaveBeenCalledWith(
       fixtures.artifactName,
       [fixtures.filesToUpload[0]],
       fixtures.rootDirectory,
-      {compressionLevel: 6, skipArchive: true}
-    )
-  })
-
-  test('does not pass skipArchive when archive is true', async () => {
-    mockInputs({
-      [Inputs.Archive]: true
-    })
-
-    mockFindFilesToUpload.mockResolvedValue({
-      filesToUpload: [fixtures.filesToUpload[0]],
-      rootDirectory: fixtures.rootDirectory
-    })
-
-    await run()
-
-    expect(artifact.default.uploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      [fixtures.filesToUpload[0]],
-      fixtures.rootDirectory,
-      {compressionLevel: 6}
+      expect.objectContaining({archive: false})
     )
   })
 
   test('fails when archive is false and multiple files are provided', async () => {
-    mockInputs({
-      [Inputs.Archive]: false
-    })
+    mockInputs({[Inputs.Archive]: false})
 
     await run()
 
     expect(core.setFailed).toHaveBeenCalledWith(
       `When 'archive' is set to false, only a single file can be uploaded. Found ${fixtures.filesToUpload.length} files to upload.`
     )
-    expect(artifact.default.uploadArtifact).not.toHaveBeenCalled()
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
   })
 })

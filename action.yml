@@ -19,10 +19,7 @@ inputs:
     default: 'warn'
   retention-days:
     description: >
-      Duration after which artifact will expire in days. 0 means using default retention.
-
-      Minimum 1 day.
-      Maximum 90 days unless changed from the repository settings page.
+      Unsupported by UploadThing. Parsed for compatibility, but ignored with a warning.
   compression-level:
     description: >
       The level of compression for Zlib to be applied to the artifact archive.
@@ -51,22 +48,28 @@ inputs:
       If false, the artifact will be uploaded as-is without archiving.
       When `archive` is `false`, only a single file can be uploaded. The name of the file will be used as the artifact name (ignoring the `name` parameter).
     default: 'true'
+  uploadthing-token:
+    description: 'UploadThing API token used to upload the artifact. Falls back to UPLOADTHING_TOKEN.'
+  acl:
+    description: 'UploadThing access control for the uploaded artifact.'
+  content-disposition:
+    description: 'Content-Disposition for the uploaded artifact.'
+  signed-url-expires-in:
+    description: 'Signed URL expiration duration for UploadThing URLs.'
 
 outputs:
+  artifact-key:
+    description: >
+      UploadThing key for the artifact that was just uploaded. Empty if the artifact upload failed.
+  artifact-custom-id:
+    description: >
+      UploadThing custom ID for the artifact that was just uploaded. Empty if the artifact upload failed.
   artifact-id:
     description: >
-      A unique identifier for the artifact that was just uploaded. Empty if the artifact upload failed.
-
-      This ID can be used as input to other APIs to download, delete or get more information about an artifact: https://docs.github.com/en/rest/actions/artifacts
+      Alias for artifact-key. Empty if the artifact upload failed.
   artifact-url:
     description: >
-      A download URL for the artifact that was just uploaded. Empty if the artifact upload failed.
-
-      This download URL only works for requests Authenticated with GitHub. Anonymous downloads will be prompted to first login. 
-      If an anonymous download URL is needed than a short time restricted URL can be generated using the download artifact API: https://docs.github.com/en/rest/actions/artifacts#download-an-artifact    
-
-      This URL will be valid for as long as the artifact exists and the workflow run and repository exists. Once an artifact has expired this URL will no longer work.
-      Common uses cases for such a download URL can be adding download links to artifacts in descriptions or comments on pull requests or issues.
+      UploadThing URL for the artifact that was just uploaded. Empty if the artifact upload failed.
   artifact-digest:
     description: >
       SHA-256 digest for the artifact that was just uploaded. Empty if the artifact upload failed.

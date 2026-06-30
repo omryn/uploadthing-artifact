@@ -1,7 +1,7 @@
 {
   "name": "upload-artifact",
   "version": "7.0.1",
-  "description": "Upload an Actions Artifact in a workflow run",
+  "description": "Upload a workflow artifact to UploadThing storage",
   "type": "module",
   "main": "dist/upload/index.js",
   "scripts": {
@@ -19,30 +19,31 @@
   },
   "keywords": [
     "Actions",
-    "GitHub",
+    "UploadThing",
     "Artifacts",
     "Upload"
   ],
   "author": "GitHub",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/actions/upload-artifact/issues"
-  },
-  "homepage": "https://github.com/actions/upload-artifact#readme",
   "engines": {
     "node": ">=24"
   },
   "dependencies": {
-    "@actions/artifact": "^6.2.0",
     "@actions/core": "^3.0.0",
     "@actions/github": "^9.0.0",
     "@actions/glob": "^0.6.1",
     "@actions/io": "^3.0.2",
-    "minimatch": "^10.1.1"
+    "archiver": "^8.0.0",
+    "minimatch": "^10.1.1",
+    "undici": "^8.5.0",
+    "unzip-stream": "^0.3.4",
+    "uploadthing": "^7.7.4"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.1.0",
+    "@types/unzip-stream": "^0.3.4",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vercel/ncc": "^0.38.4",

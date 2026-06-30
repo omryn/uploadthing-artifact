@@ -2,9 +2,13 @@ import * as path from 'path'
 import {mkdtemp, rm} from 'fs/promises'
 import * as core from '@actions/core'
 import {Minimatch} from 'minimatch'
-import artifactClient, {UploadArtifactOptions} from '@actions/artifact'
 import {getInputs} from './input-helper.js'
-import {uploadArtifact} from '../shared/upload-artifact.js'
+import {
+  deleteArtifacts,
+  downloadArtifact,
+  listArtifacts,
+  uploadArtifact
+} from '../shared/upload-artifact.js'
 import {findFilesToUpload} from '../shared/search.js'
 
 const PARALLEL_DOWNLOADS = 5
@@ -16,19 +20,25 @@ export const chunk = <T>(arr: T[], n: number): T[][] =>
     return acc
   }, [] as T[][])
 
+function downloadPath(
+  tmpDir: string,
+  artifactName: string,
+  separate: boolean
+): string {
+  return separate ? path.join(tmpDir, artifactName) : tmpDir
+}
+
 export async function run(): Promise<void> {
   const inputs = getInputs()
   const tmpDir = await mkdtemp('merge-artifact')
 
-  const listArtifactResponse = await artifactClient.listArtifacts({
-    latest: true
-  })
+  const listedArtifacts = await listArtifacts(inputs.uploadThing)
   const matcher = new Minimatch(inputs.pattern)
-  const artifacts = listArtifactResponse.artifacts.filter(artifact =>
+  const artifacts = listedArtifacts.filter(artifact =>
     matcher.match(artifact.name)
   )
   core.debug(
-    `Filtered from ${listArtifactResponse.artifacts.length} to ${artifacts.length} artifacts`
+    `Filtered from ${listedArtifacts.length} to ${artifacts.length} artifacts`
   )
 
   if (artifacts.length === 0) {
@@ -37,29 +47,22 @@ export async function run(): Promise<void> {
 
   core.info(`Preparing to download the following artifacts:`)
   artifacts.forEach(artifact => {
-    core.info(`- ${artifact.name} (ID: ${artifact.id}, Size: ${artifact.size})`)
+    core.info(
+      `- ${artifact.name} (Key: ${artifact.key}, Size: ${artifact.size})`
+    )
   })
 
   const downloadPromises = artifacts.map(artifact =>
-    artifactClient.downloadArtifact(artifact.id, {
-      path: inputs.separateDirectories
-        ? path.join(tmpDir, artifact.name)
-        : tmpDir
-    })
+    downloadArtifact(
+      artifact,
+      downloadPath(tmpDir, artifact.name, inputs.separateDirectories),
+      inputs.uploadThing
+    )
   )
 
   const chunkedPromises = chunk(downloadPromises, PARALLEL_DOWNLOADS)
   for (const chunk of chunkedPromises) {
     await Promise.all(chunk)
-  }
-
-  const options: UploadArtifactOptions = {}
-  if (inputs.retentionDays) {
-    options.retentionDays = inputs.retentionDays
-  }
-
-  if (typeof inputs.compressionLevel !== 'undefined') {
-    options.compressionLevel = inputs.compressionLevel
   }
 
   const searchResult = await findFilesToUpload(
@@ -71,7 +74,13 @@ export async function run(): Promise<void> {
     inputs.name,
     searchResult.filesToUpload,
     searchResult.rootDirectory,
-    options
+    {
+      archive: true,
+      compressionLevel: inputs.compressionLevel,
+      retentionDays: inputs.retentionDays,
+      overwrite: false,
+      ...inputs.uploadThing
+    }
   )
 
   core.info(
@@ -79,10 +88,7 @@ export async function run(): Promise<void> {
   )
 
   if (inputs.deleteMerged) {
-    const deletePromises = artifacts.map(artifact =>
-      artifactClient.deleteArtifact(artifact.name)
-    )
-    await Promise.all(deletePromises)
+    await deleteArtifacts(artifacts, inputs.uploadThing)
     core.info(`The ${artifacts.length} artifact(s) have been deleted`)
   }
 
