@@ -41,8 +41,6 @@ type UploadThingFile = {
   size?: number
   customId?: string | null
   ufsUrl?: string
-  url?: string
-  appUrl?: string
 }
 
 type UploadThingPage = {
@@ -304,39 +302,11 @@ async function uploadThingFiles(api: UTApi): Promise<UploadThingFile[]> {
   return files
 }
 
-async function findArtifactByCustomId(
-  customId: string,
-  config: UploadThingInputs
-): Promise<StoredArtifact | undefined> {
-  return (await listArtifacts(config)).find(
-    artifact => artifact.customId === customId
-  )
-}
-
-async function optionalExistingArtifact(
-  artifactName: string,
-  customId: string,
-  config: UploadThingInputs
-): Promise<StoredArtifact | undefined> {
-  try {
-    return await findArtifactByCustomId(customId, config)
-  } catch (error) {
-    core.warning(
-      `Could not check whether artifact '${artifactName}' already exists in UploadThing: ${errorMessage(error)}. Continuing because overwrite is false.`
-    )
-    return undefined
-  }
-}
-
 async function deleteArtifactByCustomId(
   customId: string,
   config: UploadThingInputs
 ): Promise<void> {
   await uploadThingApi(config).deleteFiles([customId], {keyType: 'customId'})
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function uploadData(result: unknown): UploadThingFile {
@@ -362,7 +332,32 @@ async function signedUrl(
 }
 
 function publicUrl(file: UploadThingFile, key: string): string {
-  return file.ufsUrl || file.url || file.appUrl || `https://utfs.io/f/${key}`
+  return file.ufsUrl || `https://utfs.io/f/${key}`
+}
+
+function isUploadThingUrlDeprecationWarning(message: unknown): boolean {
+  return (
+    typeof message === 'string' &&
+    message.startsWith('⚠️ [uploadthing][deprecated] `file.') &&
+    message.includes('Use `file.ufsUrl` instead.')
+  )
+}
+
+async function withoutUploadThingUrlDeprecationWarnings<T>(
+  work: () => Promise<T>
+): Promise<T> {
+  const warn = console.warn
+  console.warn = (...args: unknown[]) => {
+    if (!isUploadThingUrlDeprecationWarning(args[0])) {
+      warn(...args)
+    }
+  }
+
+  try {
+    return await work()
+  } finally {
+    console.warn = warn
+  }
 }
 
 async function artifactUrl(
@@ -410,17 +405,6 @@ export async function uploadArtifact(
   try {
     if (options.overwrite) {
       await deleteArtifactByCustomId(customId, options)
-    } else {
-      const existingArtifact = await optionalExistingArtifact(
-        uploadFile.artifactName,
-        customId,
-        options
-      )
-      if (existingArtifact) {
-        throw new Error(
-          `Artifact '${uploadFile.artifactName}' already exists in this workflow run`
-        )
-      }
     }
 
     const file = new UTFile(
@@ -431,7 +415,9 @@ export async function uploadArtifact(
       }
     )
     const uploadedFile = uploadData(
-      await uploadThingApi(options).uploadFiles(file, uploadOptions(options))
+      await withoutUploadThingUrlDeprecationWarnings(() =>
+        uploadThingApi(options).uploadFiles(file, uploadOptions(options))
+      )
     )
     const key = uploadedFile.key || uploadedFile.fileKey || ''
     const digest = await sha256File(uploadFile.filePath)

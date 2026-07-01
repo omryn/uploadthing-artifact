@@ -233926,23 +233926,8 @@ async function uploadThingFiles(api) {
     }
     return files;
 }
-async function findArtifactByCustomId(customId, config) {
-    return (await listArtifacts(config)).find(artifact => artifact.customId === customId);
-}
-async function optionalExistingArtifact(artifactName, customId, config) {
-    try {
-        return await findArtifactByCustomId(customId, config);
-    }
-    catch (error) {
-        warning(`Could not check whether artifact '${artifactName}' already exists in UploadThing: ${errorMessage(error)}. Continuing because overwrite is false.`);
-        return undefined;
-    }
-}
 async function deleteArtifactByCustomId(customId, config) {
     await uploadThingApi(config).deleteFiles([customId], { keyType: 'customId' });
-}
-function errorMessage(error) {
-    return error instanceof Error ? error.message : String(error);
 }
 function uploadData(result) {
     const item = Array.isArray(result) ? result[0] : result;
@@ -233959,7 +233944,26 @@ async function signedUrl(key, config) {
     return result.ufsUrl;
 }
 function publicUrl(file, key) {
-    return file.ufsUrl || file.url || file.appUrl || `https://utfs.io/f/${key}`;
+    return file.ufsUrl || `https://utfs.io/f/${key}`;
+}
+function isUploadThingUrlDeprecationWarning(message) {
+    return (typeof message === 'string' &&
+        message.startsWith('⚠️ [uploadthing][deprecated] `file.') &&
+        message.includes('Use `file.ufsUrl` instead.'));
+}
+async function withoutUploadThingUrlDeprecationWarnings(work) {
+    const warn = console.warn;
+    console.warn = (...args) => {
+        if (!isUploadThingUrlDeprecationWarning(args[0])) {
+            warn(...args);
+        }
+    };
+    try {
+        return await work();
+    }
+    finally {
+        console.warn = warn;
+    }
 }
 async function artifactUrl(file, config) {
     const key = file.key || file.fileKey || '';
@@ -233985,16 +233989,10 @@ async function uploadArtifact(artifactName, filesToUpload, rootDirectory, option
         if (options.overwrite) {
             await deleteArtifactByCustomId(customId, options);
         }
-        else {
-            const existingArtifact = await optionalExistingArtifact(uploadFile.artifactName, customId, options);
-            if (existingArtifact) {
-                throw new Error(`Artifact '${uploadFile.artifactName}' already exists in this workflow run`);
-            }
-        }
         const file = new UTFile([await uploadFileBlob(uploadFile.filePath)], uploadFile.fileName, {
             customId
         });
-        const uploadedFile = uploadData(await uploadThingApi(options).uploadFiles(file, uploadOptions(options)));
+        const uploadedFile = uploadData(await withoutUploadThingUrlDeprecationWarnings(() => uploadThingApi(options).uploadFiles(file, uploadOptions(options))));
         const key = uploadedFile.key || uploadedFile.fileKey || '';
         const digest = await sha256File(uploadFile.filePath);
         const size = (await (0,promises_namespaceObject.stat)(uploadFile.filePath)).size;

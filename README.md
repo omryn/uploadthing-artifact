@@ -48,7 +48,8 @@ You can also pass the token with the `uploadthing-token` input.
     # Optional. Default is '6'
     compression-level:
 
-    # Delete an existing UploadThing artifact for the same workflow run and artifact name before upload.
+    # Delete an existing UploadThing file with the same workflow-run custom ID before upload.
+    # When false, no duplicate preflight check is performed.
     # Optional. Default is 'false'
     overwrite:
 

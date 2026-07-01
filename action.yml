@@ -33,8 +33,8 @@ inputs:
     default: '6'
   overwrite:
     description: >
-      If true, an artifact with a matching name will be deleted before a new one is uploaded.
-      If false, the action will fail if an artifact for the given name already exists.
+      If true, the UploadThing file with the same workflow-run custom ID is deleted before upload.
+      If false, no duplicate preflight check is performed.
       Does not fail if the artifact does not exist.
     default: 'false'
   include-hidden-files:
