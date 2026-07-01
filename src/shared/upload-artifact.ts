@@ -313,6 +313,32 @@ async function findArtifactByCustomId(
   )
 }
 
+async function optionalExistingArtifact(
+  artifactName: string,
+  customId: string,
+  config: UploadThingInputs
+): Promise<StoredArtifact | undefined> {
+  try {
+    return await findArtifactByCustomId(customId, config)
+  } catch (error) {
+    core.warning(
+      `Could not check whether artifact '${artifactName}' already exists in UploadThing: ${errorMessage(error)}. Continuing because overwrite is false.`
+    )
+    return undefined
+  }
+}
+
+async function deleteArtifactByCustomId(
+  customId: string,
+  config: UploadThingInputs
+): Promise<void> {
+  await uploadThingApi(config).deleteFiles([customId], {keyType: 'customId'})
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 function uploadData(result: unknown): UploadThingFile {
   const item = Array.isArray(result) ? result[0] : (result as any)
   if (item?.error) {
@@ -380,16 +406,21 @@ export async function uploadArtifact(
     options
   )
   const customId = artifactCustomId(uploadFile.artifactName, uploadFile.archive)
-  const existingArtifact = await findArtifactByCustomId(customId, options)
 
   try {
-    if (existingArtifact) {
-      if (!options.overwrite) {
+    if (options.overwrite) {
+      await deleteArtifactByCustomId(customId, options)
+    } else {
+      const existingArtifact = await optionalExistingArtifact(
+        uploadFile.artifactName,
+        customId,
+        options
+      )
+      if (existingArtifact) {
         throw new Error(
           `Artifact '${uploadFile.artifactName}' already exists in this workflow run`
         )
       }
-      await deleteArtifacts([existingArtifact], options)
     }
 
     const file = new UTFile(

@@ -233929,6 +233929,21 @@ async function uploadThingFiles(api) {
 async function findArtifactByCustomId(customId, config) {
     return (await listArtifacts(config)).find(artifact => artifact.customId === customId);
 }
+async function optionalExistingArtifact(artifactName, customId, config) {
+    try {
+        return await findArtifactByCustomId(customId, config);
+    }
+    catch (error) {
+        warning(`Could not check whether artifact '${artifactName}' already exists in UploadThing: ${errorMessage(error)}. Continuing because overwrite is false.`);
+        return undefined;
+    }
+}
+async function deleteArtifactByCustomId(customId, config) {
+    await uploadThingApi(config).deleteFiles([customId], { keyType: 'customId' });
+}
+function errorMessage(error) {
+    return error instanceof Error ? error.message : String(error);
+}
 function uploadData(result) {
     const item = Array.isArray(result) ? result[0] : result;
     if (item?.error) {
@@ -233966,13 +233981,15 @@ async function downloadResponse(artifact, config) {
 async function uploadArtifact(artifactName, filesToUpload, rootDirectory, options) {
     const uploadFile = await fileForUpload(artifactName, filesToUpload, rootDirectory, options);
     const customId = artifactCustomId(uploadFile.artifactName, uploadFile.archive);
-    const existingArtifact = await findArtifactByCustomId(customId, options);
     try {
-        if (existingArtifact) {
-            if (!options.overwrite) {
+        if (options.overwrite) {
+            await deleteArtifactByCustomId(customId, options);
+        }
+        else {
+            const existingArtifact = await optionalExistingArtifact(uploadFile.artifactName, customId, options);
+            if (existingArtifact) {
                 throw new Error(`Artifact '${uploadFile.artifactName}' already exists in this workflow run`);
             }
-            await deleteArtifacts([existingArtifact], options);
         }
         const file = new UTFile([await uploadFileBlob(uploadFile.filePath)], uploadFile.fileName, {
             customId
