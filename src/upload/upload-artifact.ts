@@ -1,25 +1,30 @@
 import * as core from '@actions/core'
-import artifact, {
-  UploadArtifactOptions,
-  ArtifactNotFoundError
-} from '@actions/artifact'
+import type {UploadArtifactOptions} from '../shared/upload-artifact.js'
 import {findFilesToUpload} from '../shared/search.js'
 import {getInputs} from './input-helper.js'
 import {NoFileOptions} from './constants.js'
 import {uploadArtifact} from '../shared/upload-artifact.js'
+import type {UploadInputs} from './upload-inputs.js'
 
-async function deleteArtifactIfExists(artifactName: string): Promise<void> {
-  try {
-    await artifact.deleteArtifact(artifactName)
-  } catch (error) {
-    if (error instanceof ArtifactNotFoundError) {
-      core.debug(`Skipping deletion of '${artifactName}', it does not exist`)
-      return
-    }
-
-    // Best effort, we don't want to fail the action if this fails
-    core.debug(`Unable to delete artifact: ${(error as Error).message}`)
+function getUploadOptions(inputs: UploadInputs): UploadArtifactOptions {
+  const options: UploadArtifactOptions = {
+    archive: inputs.archive,
+    overwrite: inputs.overwrite,
+    uploadthingToken: inputs.uploadthingToken,
+    acl: inputs.acl,
+    contentDisposition: inputs.contentDisposition,
+    signedUrlExpiresIn: inputs.signedUrlExpiresIn
   }
+
+  if (typeof inputs.retentionDays !== 'undefined') {
+    options.retentionDays = inputs.retentionDays
+  }
+
+  if (typeof inputs.compressionLevel !== 'undefined') {
+    options.compressionLevel = inputs.compressionLevel
+  }
+
+  return options
 }
 
 export async function run(): Promise<void> {
@@ -65,22 +70,7 @@ export async function run(): Promise<void> {
       return
     }
 
-    if (inputs.overwrite) {
-      await deleteArtifactIfExists(inputs.artifactName)
-    }
-
-    const options: UploadArtifactOptions = {}
-    if (inputs.retentionDays) {
-      options.retentionDays = inputs.retentionDays
-    }
-
-    if (typeof inputs.compressionLevel !== 'undefined') {
-      options.compressionLevel = inputs.compressionLevel
-    }
-
-    if (!inputs.archive) {
-      options.skipArchive = true
-    }
+    const options = getUploadOptions(inputs)
 
     await uploadArtifact(
       inputs.artifactName,

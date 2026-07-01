@@ -1,248 +1,77 @@
-# Migration
+# Migration to UploadThing storage
 
-- [Migration](#migration)
-  - [Multiple uploads to the same named Artifact](#multiple-uploads-to-the-same-named-artifact)
-  - [Overwriting an Artifact](#overwriting-an-artifact)
-  - [Merging multiple artifacts](#merging-multiple-artifacts)
-  - [Hidden files](#hidden-files)
+This repository now stores artifacts in UploadThing only. It no longer creates GitHub Actions artifacts.
 
-Several behavioral differences exist between Artifact actions `v3` and below vs `v4`. This document outlines common scenarios in `v3`, and how they would be handled in `v4`.
+## What changes
 
-## Multiple uploads to the same named Artifact
+- Uploads go to UploadThing through `UTApi.uploadFiles`.
+- `artifact-url` is an UploadThing URL, not a GitHub URL.
+- `artifact-id` is an alias for the UploadThing file key.
+- `actions/download-artifact` cannot download these artifacts.
+- `retention-days` is ignored because UploadThing does not support GitHub-style per-artifact retention through this action.
+- Artifact overwrite/delete/merge behavior is implemented with UploadThing `customId`s scoped to the current repository, workflow run, and run attempt.
 
-In `v3`, Artifacts are _mutable_ so it's possible to write workflow scenarios where multiple jobs upload to the same Artifact like so:
+## Required workflow change
 
-```yaml
-jobs:
-  upload:
-    strategy:
-      matrix:
-        runs-on: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - name: Create a File
-        run: echo "hello from ${{ matrix.runs-on }}" > file-${{ matrix.runs-on }}.txt
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: my-artifact # NOTE: same artifact name
-          path: file-${{ matrix.runs-on }}.txt
-  download:
-    needs: upload
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v3
-        with:
-          name: my-artifact
-          path: my-artifact
-      - run: ls -R my-artifact
-```
-
-This results in a directory like so:
-
-```
-my-artifact/
-  file-macos-latest.txt
-  file-ubuntu-latest.txt
-  file-windows-latest.txt
-```
-
-In v4, Artifacts are immutable (unless deleted). So you must change each of the uploaded Artifacts to have a different name and filter the downloads by name to achieve the same effect:
-
-```diff
-jobs:
-  upload:
-    strategy:
-      matrix:
-        runs-on: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-    - name: Create a File
-      run: echo "hello from ${{ matrix.runs-on }}" > file-${{ matrix.runs-on }}.txt
-    - name: Upload Artifact
--     uses: actions/upload-artifact@v3
-+     uses: actions/upload-artifact@v4
-      with:
--       name: my-artifact
-+       name: my-artifact-${{ matrix.runs-on }}
-        path: file-${{ matrix.runs-on }}.txt
-  download:
-    needs: upload
-    runs-on: ubuntu-latest
-    steps:
-    - name: Download All Artifacts
--     uses: actions/download-artifact@v3
-+     uses: actions/download-artifact@v4
-      with:
--       name: my-artifact
-        path: my-artifact
-+       pattern: my-artifact-*
-+       merge-multiple: true
-    - run: ls -R my-artifact
-```
-
-In `v4`, the new `pattern:` input will filter the downloaded Artifacts to match the name specified. The new `merge-multiple:` input will support downloading multiple Artifacts to the same directory. If the files within the Artifacts have the same name, the last writer wins.
-
-## Overwriting an Artifact
-
-In `v3`, the contents of an Artifact were mutable so something like the following was possible:
+Add an UploadThing token:
 
 ```yaml
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a file
-        run: echo "hello world" > my-file.txt
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: my-artifact # NOTE: same artifact name
-          path: my-file.txt
-  upload-again:
-    needs: upload
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a different file
-        run: echo "goodbye world" > my-file.txt
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: my-artifact # NOTE: same artifact name
-          path: my-file.txt
+env:
+  UPLOADTHING_TOKEN: ${{ secrets.APTApiKey }}
 ```
 
-The resulting `my-file.txt` in `my-artifact` will have "goodbye world" as the content.
-
-In `v4`, Artifacts are immutable unless deleted. To achieve this same behavior, you can use `overwrite: true` to delete the Artifact before a new one is created:
-
-```diff
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a file
-        run: echo "hello world" > my-file.txt
-      - name: Upload Artifact
--       uses: actions/upload-artifact@v3
-+       uses: actions/upload-artifact@v4
-        with:
-          name: my-artifact # NOTE: same artifact name
-          path: my-file.txt
-  upload-again:
-    needs: upload
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a different file
-        run: echo "goodbye world" > my-file.txt
-      - name: Upload Artifact
--       uses: actions/upload-artifact@v3
-+       uses: actions/upload-artifact@v4
-        with:
-          name: my-artifact # NOTE: same artifact name
-          path: my-file.txt
-+         overwrite: true
-```
-
-Note that this will create an _entirely_ new Artifact, with a different ID from the previous.
-
-## Merging multiple artifacts
-
-In `v3`, multiple uploads from multiple jobs could be done to the same Artifact. This would result in a single archive, which could be useful for sending to upstream systems outside of Actions via API or UI downloads.
+or pass it directly:
 
 ```yaml
-jobs:
-  upload:
-    strategy:
-      matrix:
-        runs-on: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - name: Create a File
-        run: echo "hello from ${{ matrix.runs-on }}" > file-${{ matrix.runs-on }}.txt
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: all-my-files # NOTE: same artifact name
-          path: file-${{ matrix.runs-on }}.txt
+- uses: your-org/uploadthing-artifact@v1
+  with:
+    uploadthing-token: ${{ secrets.APTApiKey }}
+    name: build
+    path: dist/
 ```
 
-The single `all-my-files` artifact would contain the following:
+## Downloading artifacts
 
-```
-.
-  ∟ file-ubuntu-latest.txt
-  ∟ file-macos-latest.txt
-  ∟ file-windows-latest.txt
-```
-
-To achieve the same in `v4` you can change it like so:
-
-```diff
-jobs:
-  upload:
-    strategy:
-      matrix:
-        runs-on: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - name: Create a File
-        run: echo "hello from ${{ matrix.runs-on }}" > file-${{ matrix.runs-on }}.txt
-      - name: Upload Artifact
--       uses: actions/upload-artifact@v3
-+       uses: actions/upload-artifact@v4
-        with:
--         name: all-my-files
-+         name: my-artifact-${{ matrix.runs-on }}
-          path: file-${{ matrix.runs-on }}.txt
-+  merge:
-+    runs-on: ubuntu-latest
-+    needs: upload
-+    steps:
-+      - name: Merge Artifacts
-+        uses: actions/upload-artifact/merge@v4
-+        with:
-+          name: all-my-files
-+          pattern: my-artifact-*
-```
-
-Note that this will download all artifacts to a temporary directory and reupload them as a single artifact. For more information on inputs and other use cases for `actions/upload-artifact/merge@v4`, see [the action documentation](../merge/README.md).
-
-## Hidden Files
-
-By default, hidden files are ignored by this action to avoid unintentionally uploading sensitive
-information.
-
-In versions of this action before v4.4.0, these hidden files were included by default.
-
-If you need to upload hidden files, you can use the `include-hidden-files` input.
+Replace `actions/download-artifact` steps with direct downloads from the action output.
 
 ```yaml
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a Hidden File
-        run: echo "hello from a hidden file" > .hidden-file.txt
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          path: .hidden-file.txt
+- uses: your-org/uploadthing-artifact@v1
+  id: artifact
+  with:
+    name: build
+    path: dist/
+
+- run: |
+    curl -fsSL '${{ steps.artifact.outputs.artifact-url }}' -o build.zip
+    unzip -q build.zip -d build
 ```
 
+For `archive: false`, download the URL directly as the file.
 
-```diff
-jobs:
-  upload:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create a Hidden File
-        run: echo "hello from a hidden file" > .hidden-file.txt
-      - name: Upload Artifact
--       uses: actions/upload-artifact@v3
-+       uses: actions/upload-artifact@v4
-        with:
-          path: .hidden-file.txt
-+         include-hidden-files: true
+## Private artifacts
+
+Use UploadThing ACL and signed URL outputs:
+
+```yaml
+- uses: your-org/uploadthing-artifact@v1
+  id: artifact
+  with:
+    name: private-report
+    path: report.html
+    acl: private
+    signed-url-expires-in: 1 hour
 ```
+
+## Merge migration
+
+Use the included merge action instead of GitHub artifact download/reupload flows:
+
+```yaml
+- uses: your-org/uploadthing-artifact/merge@v1
+  with:
+    name: merged-artifacts
+    pattern: build-*
+    separate-directories: true
+```
+
+Only artifacts created in the current workflow run/run attempt are included.
