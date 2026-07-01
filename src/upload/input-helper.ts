@@ -37,18 +37,6 @@ export function getInputs(): UploadInputs {
     ...uploadThingInputs
   } as UploadInputs
 
-  const retentionDaysStr = core.getInput(Inputs.RetentionDays)
-  if (retentionDaysStr) {
-    inputs.retentionDays = parseInt(retentionDaysStr)
-    if (isNaN(inputs.retentionDays)) {
-      core.setFailed('Invalid retention-days')
-    } else {
-      core.warning(
-        'retention-days is not supported by UploadThing and will be ignored'
-      )
-    }
-  }
-
   const compressionLevelStr = core.getInput(Inputs.CompressionLevel)
   if (compressionLevelStr) {
     inputs.compressionLevel = parseInt(compressionLevelStr)

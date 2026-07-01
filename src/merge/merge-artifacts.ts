@@ -20,14 +20,6 @@ export const chunk = <T>(arr: T[], n: number): T[][] =>
     return acc
   }, [] as T[][])
 
-function downloadPath(
-  tmpDir: string,
-  artifactName: string,
-  separate: boolean
-): string {
-  return separate ? path.join(tmpDir, artifactName) : tmpDir
-}
-
 export async function run(): Promise<void> {
   const inputs = getInputs()
   const tmpDir = await mkdtemp('merge-artifact')
@@ -55,7 +47,7 @@ export async function run(): Promise<void> {
   const downloadPromises = artifacts.map(artifact =>
     downloadArtifact(
       artifact,
-      downloadPath(tmpDir, artifact.name, inputs.separateDirectories),
+      inputs.separateDirectories ? path.join(tmpDir, artifact.name) : tmpDir,
       inputs.uploadThing
     )
   )
@@ -77,7 +69,6 @@ export async function run(): Promise<void> {
     {
       archive: true,
       compressionLevel: inputs.compressionLevel,
-      retentionDays: inputs.retentionDays,
       overwrite: false,
       ...inputs.uploadThing
     }

@@ -8,7 +8,6 @@ This repository now stores artifacts in UploadThing only. It no longer creates G
 - `artifact-url` is an UploadThing URL, not a GitHub URL.
 - `artifact-id` is an alias for the UploadThing file key.
 - `actions/download-artifact` cannot download these artifacts.
-- `retention-days` is ignored because UploadThing does not support GitHub-style per-artifact retention through this action.
 - Artifact overwrite/delete/merge behavior is implemented with UploadThing `customId`s scoped to the current repository, workflow run, and run attempt.
 
 ## Required workflow change

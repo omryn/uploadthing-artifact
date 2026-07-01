@@ -18,7 +18,6 @@ import type {
 } from './uploadthing-input-helper.js'
 
 export interface UploadArtifactOptions extends UploadThingInputs {
-  retentionDays?: number
   compressionLevel?: number
   archive: boolean
   overwrite?: boolean

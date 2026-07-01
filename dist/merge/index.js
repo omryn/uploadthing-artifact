@@ -129651,7 +129651,6 @@ var Inputs;
     Inputs["Name"] = "name";
     Inputs["Pattern"] = "pattern";
     Inputs["SeparateDirectories"] = "separate-directories";
-    Inputs["RetentionDays"] = "retention-days";
     Inputs["CompressionLevel"] = "compression-level";
     Inputs["DeleteMerged"] = "delete-merged";
     Inputs["IncludeHiddenFiles"] = "include-hidden-files";
@@ -129701,20 +129700,6 @@ function getUploadThingInputs() {
 
 
 
-function parseRetentionDaysInput(value) {
-    if (!value) {
-        return 0;
-    }
-    const retentionDays = parseInt(value);
-    if (isNaN(retentionDays)) {
-        setFailed('Invalid retention-days');
-        return retentionDays;
-    }
-    if (retentionDays > 0) {
-        warning('retention-days is ignored because UploadThing storage does not support per-artifact retention');
-    }
-    return retentionDays;
-}
 /**
  * Helper to get all the inputs for the action
  */
@@ -129730,12 +129715,10 @@ function getInputs() {
         pattern,
         separateDirectories,
         deleteMerged,
-        retentionDays: 0,
         compressionLevel: 6,
         includeHiddenFiles,
         uploadThing
     };
-    inputs.retentionDays = parseRetentionDaysInput(getInput(Inputs.RetentionDays));
     const compressionLevelStr = getInput(Inputs.CompressionLevel);
     if (compressionLevelStr) {
         inputs.compressionLevel = parseInt(compressionLevelStr);
@@ -235117,9 +235100,6 @@ const merge_artifacts_chunk = (arr, n) => arr.reduce((acc, cur, i) => {
     acc[index] = [...(acc[index] || []), cur];
     return acc;
 }, []);
-function downloadPath(tmpDir, artifactName, separate) {
-    return separate ? external_path_.join(tmpDir, artifactName) : tmpDir;
-}
 async function merge_artifacts_run() {
     const inputs = getInputs();
     const tmpDir = await (0,promises_namespaceObject.mkdtemp)('merge-artifact');
@@ -235134,7 +235114,7 @@ async function merge_artifacts_run() {
     artifacts.forEach(artifact => {
         info(`- ${artifact.name} (Key: ${artifact.key}, Size: ${artifact.size})`);
     });
-    const downloadPromises = artifacts.map(artifact => downloadArtifact(artifact, downloadPath(tmpDir, artifact.name, inputs.separateDirectories), inputs.uploadThing));
+    const downloadPromises = artifacts.map(artifact => downloadArtifact(artifact, inputs.separateDirectories ? external_path_.join(tmpDir, artifact.name) : tmpDir, inputs.uploadThing));
     const chunkedPromises = merge_artifacts_chunk(downloadPromises, PARALLEL_DOWNLOADS);
     for (const chunk of chunkedPromises) {
         await Promise.all(chunk);
@@ -235143,7 +235123,6 @@ async function merge_artifacts_run() {
     await uploadArtifact(inputs.name, searchResult.filesToUpload, searchResult.rootDirectory, {
         archive: true,
         compressionLevel: inputs.compressionLevel,
-        retentionDays: inputs.retentionDays,
         overwrite: false,
         ...inputs.uploadThing
     });

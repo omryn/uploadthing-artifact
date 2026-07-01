@@ -128314,7 +128314,6 @@ var Inputs;
     Inputs["Name"] = "name";
     Inputs["Path"] = "path";
     Inputs["IfNoFilesFound"] = "if-no-files-found";
-    Inputs["RetentionDays"] = "retention-days";
     Inputs["CompressionLevel"] = "compression-level";
     Inputs["Overwrite"] = "overwrite";
     Inputs["IncludeHiddenFiles"] = "include-hidden-files";
@@ -128408,16 +128407,6 @@ function getInputs() {
         archive: archive,
         ...uploadThingInputs
     };
-    const retentionDaysStr = getInput(Inputs.RetentionDays);
-    if (retentionDaysStr) {
-        inputs.retentionDays = parseInt(retentionDaysStr);
-        if (isNaN(inputs.retentionDays)) {
-            setFailed('Invalid retention-days');
-        }
-        else {
-            warning('retention-days is not supported by UploadThing and will be ignored');
-        }
-    }
     const compressionLevelStr = getInput(Inputs.CompressionLevel);
     if (compressionLevelStr) {
         inputs.compressionLevel = parseInt(compressionLevelStr);
@@ -235137,9 +235126,6 @@ function getUploadOptions(inputs) {
         contentDisposition: inputs.contentDisposition,
         signedUrlExpiresIn: inputs.signedUrlExpiresIn
     };
-    if (typeof inputs.retentionDays !== 'undefined') {
-        options.retentionDays = inputs.retentionDays;
-    }
     if (typeof inputs.compressionLevel !== 'undefined') {
         options.compressionLevel = inputs.compressionLevel;
     }
@@ -235169,7 +235155,6 @@ async function upload_artifact_run() {
         const s = searchResult.filesToUpload.length === 1 ? '' : 's';
         info(`With the provided path, there will be ${searchResult.filesToUpload.length} file${s} uploaded`);
         core_debug(`Root artifact directory is ${searchResult.rootDirectory}`);
-        // Validate that only a single file is uploaded when archive is false
         if (!inputs.archive && searchResult.filesToUpload.length > 1) {
             setFailed(`When 'archive' is set to false, only a single file can be uploaded. Found ${searchResult.filesToUpload.length} files to upload.`);
             return;

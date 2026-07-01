@@ -12,11 +12,6 @@ export interface MergeInputs {
   pattern: string
 
   /**
-   * Duration after which artifact will expire in days
-   */
-  retentionDays: number
-
-  /**
    * The level of compression for Zlib to be applied to the artifact archive.
    */
   compressionLevel?: number

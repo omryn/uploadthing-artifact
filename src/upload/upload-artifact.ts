@@ -16,10 +16,6 @@ function getUploadOptions(inputs: UploadInputs): UploadArtifactOptions {
     signedUrlExpiresIn: inputs.signedUrlExpiresIn
   }
 
-  if (typeof inputs.retentionDays !== 'undefined') {
-    options.retentionDays = inputs.retentionDays
-  }
-
   if (typeof inputs.compressionLevel !== 'undefined') {
     options.compressionLevel = inputs.compressionLevel
   }
@@ -62,7 +58,6 @@ export async function run(): Promise<void> {
     )
     core.debug(`Root artifact directory is ${searchResult.rootDirectory}`)
 
-    // Validate that only a single file is uploaded when archive is false
     if (!inputs.archive && searchResult.filesToUpload.length > 1) {
       core.setFailed(
         `When 'archive' is set to false, only a single file can be uploaded. Found ${searchResult.filesToUpload.length} files to upload.`

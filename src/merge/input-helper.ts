@@ -3,26 +3,6 @@ import {Inputs} from './constants.js'
 import {MergeInputs} from './merge-inputs.js'
 import {getUploadThingInputs} from '../shared/uploadthing-input-helper.js'
 
-function parseRetentionDaysInput(value: string): number {
-  if (!value) {
-    return 0
-  }
-
-  const retentionDays = parseInt(value)
-  if (isNaN(retentionDays)) {
-    core.setFailed('Invalid retention-days')
-    return retentionDays
-  }
-
-  if (retentionDays > 0) {
-    core.warning(
-      'retention-days is ignored because UploadThing storage does not support per-artifact retention'
-    )
-  }
-
-  return retentionDays
-}
-
 /**
  * Helper to get all the inputs for the action
  */
@@ -39,15 +19,10 @@ export function getInputs(): MergeInputs {
     pattern,
     separateDirectories,
     deleteMerged,
-    retentionDays: 0,
     compressionLevel: 6,
     includeHiddenFiles,
     uploadThing
   } as MergeInputs
-
-  inputs.retentionDays = parseRetentionDaysInput(
-    core.getInput(Inputs.RetentionDays)
-  )
 
   const compressionLevelStr = core.getInput(Inputs.CompressionLevel)
   if (compressionLevelStr) {

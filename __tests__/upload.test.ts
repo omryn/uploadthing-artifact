@@ -55,7 +55,6 @@ const mockInputs = (
     [Inputs.Name]: fixtures.artifactName,
     [Inputs.Path]: fixtures.rootDirectory,
     [Inputs.IfNoFilesFound]: 'warn',
-    [Inputs.RetentionDays]: '',
     [Inputs.CompressionLevel]: '6',
     [Inputs.Overwrite]: false,
     [Inputs.IncludeHiddenFiles]: false,
@@ -124,22 +123,6 @@ describe('upload', () => {
         contentDisposition: 'attachment',
         signedUrlExpiresIn: '30 minutes'
       })
-    )
-  })
-
-  test('warns that retention days are ignored', async () => {
-    mockInputs({[Inputs.RetentionDays]: '7'})
-
-    await run()
-
-    expect(core.warning).toHaveBeenCalledWith(
-      'retention-days is not supported by UploadThing and will be ignored'
-    )
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      fixtures.filesToUpload,
-      fixtures.rootDirectory,
-      expect.objectContaining({retentionDays: 7})
     )
   })
 

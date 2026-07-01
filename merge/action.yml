@@ -14,9 +14,6 @@ inputs:
       If true, the matched artifacts will be extracted into individual named directories within the specified path.
       If false, the matched artifacts will combined in the same directory.'
     default: 'false'
-  retention-days:
-    description: >
-      Unsupported by UploadThing. Parsed for compatibility, but ignored with a warning.
   compression-level:
     description: >
       The level of compression for Zlib to be applied to the artifact archive.

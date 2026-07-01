@@ -17,10 +17,7 @@ export interface UploadInputs extends UploadThingInputs {
    */
   ifNoFilesFound: NoFileOptions
 
-  /**
-   * Duration after which artifact will expire in days
-   */
-  retentionDays?: number
+  retentionDays: never
 
   /**
    * The level of compression for Zlib to be applied to the artifact archive.

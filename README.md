@@ -41,9 +41,6 @@ You can also pass the token with the `uploadthing-token` input.
     # Optional. Default is 'warn'
     if-no-files-found:
 
-    # Unsupported by UploadThing. Parsed for compatibility and ignored with a warning.
-    retention-days:
-
     # Zip compression level from 0 to 9 when archive is true.
     # Optional. Default is '6'
     compression-level:
@@ -144,7 +141,6 @@ Artifacts are identified by UploadThing `customId` scoped to the current reposit
 
 - `actions/download-artifact` is not compatible with these artifacts.
 - GitHub artifact retention settings do not apply.
-- `retention-days` is accepted only for compatibility and is ignored.
 - UploadThing quotas, ACL, region, and file lifecycle are controlled by the UploadThing app settings.
 
 ## Merge action

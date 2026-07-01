@@ -17,9 +17,6 @@ inputs:
         error: Fail the action with an error message
         ignore: Do not output any warnings or errors, the action does not fail
     default: 'warn'
-  retention-days:
-    description: >
-      Unsupported by UploadThing. Parsed for compatibility, but ignored with a warning.
   compression-level:
     description: >
       The level of compression for Zlib to be applied to the artifact archive.

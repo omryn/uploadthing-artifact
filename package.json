@@ -19,6 +19,7 @@
   },
   "keywords": [
     "Actions",
+    "GitHub",
     "UploadThing",
     "Artifacts",
     "Upload"
@@ -32,7 +33,6 @@
     "@actions/core": "^3.0.0",
     "@actions/github": "^9.0.0",
     "@actions/glob": "^0.6.1",
-    "@actions/io": "^3.0.2",
     "archiver": "^8.0.0",
     "minimatch": "^10.1.1",
     "undici": "^8.5.0",
@@ -40,6 +40,7 @@
     "uploadthing": "^7.7.4"
   },
   "devDependencies": {
+    "@actions/io": "^3.0.2",
     "@types/archiver": "^8.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.1.0",

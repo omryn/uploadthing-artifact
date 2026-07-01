@@ -36,9 +36,6 @@ The merge action lists UploadThing files whose deterministic `customId` belongs 
     # Optional. Default is 'false'
     delete-merged:
 
-    # Unsupported by UploadThing. Parsed for compatibility and ignored with a warning.
-    retention-days:
-
     # Zip compression level for the merged artifact.
     # Optional. Default is '6'
     compression-level:

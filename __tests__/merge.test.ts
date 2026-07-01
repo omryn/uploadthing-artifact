@@ -61,9 +61,9 @@ const fixtures = {
   artifactName: 'my-merged-artifact',
   tmpDirectory: '/tmp/merge-artifact',
   filesToUpload: [
-    '/tmp/merge-artifact/file-a.txt',
-    '/tmp/merge-artifact/file-b.txt',
-    '/tmp/merge-artifact/file-c.txt'
+    '/some/artifact/path/file-a.txt',
+    '/some/artifact/path/file-b.txt',
+    '/some/artifact/path/file-c.txt'
   ],
   artifacts: [
     {
@@ -101,7 +101,6 @@ const mockInputs = (
     [Inputs.Name]: fixtures.artifactName,
     [Inputs.Pattern]: '*',
     [Inputs.SeparateDirectories]: false,
-    [Inputs.RetentionDays]: '',
     [Inputs.CompressionLevel]: '6',
     [Inputs.DeleteMerged]: false,
     [Inputs.IncludeHiddenFiles]: false,
@@ -153,7 +152,6 @@ describe('merge', () => {
       expect.objectContaining({
         archive: true,
         compressionLevel: 6,
-        retentionDays: 0,
         overwrite: false
       })
     )
@@ -207,22 +205,6 @@ describe('merge', () => {
       fixtures.filesToUpload,
       fixtures.tmpDirectory,
       expect.objectContaining({compressionLevel: 2})
-    )
-  })
-
-  test('warns that retention days are ignored', async () => {
-    mockInputs({[Inputs.RetentionDays]: '7'})
-
-    await run()
-
-    expect(core.warning).toHaveBeenCalledWith(
-      'retention-days is ignored because UploadThing storage does not support per-artifact retention'
-    )
-    expect(mockUploadArtifact).toHaveBeenCalledWith(
-      fixtures.artifactName,
-      fixtures.filesToUpload,
-      fixtures.tmpDirectory,
-      expect.objectContaining({retentionDays: 7})
     )
   })
 
